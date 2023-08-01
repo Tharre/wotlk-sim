@@ -12,9 +12,6 @@ type DotConfig struct {
 	IsAOE    bool // Set to true for AOE dots (Blizzard, Hurricane, Consecrate, etc)
 	SelfOnly bool // Set to true to only create the self-hot.
 
-	// Optional, will default to the corresponding spell.
-	Spell *Spell
-
 	Aura Aura
 
 	NumberOfTicks int32         // number of ticks over the whole duration
@@ -253,11 +250,8 @@ func (spell *Spell) createDots(config DotConfig, isHot bool) {
 		return
 	}
 
-	if config.Spell == nil {
-		config.Spell = spell
-	}
 	dot := Dot{
-		Spell: config.Spell,
+		Spell: spell,
 
 		NumberOfTicks:       config.NumberOfTicks,
 		TickLength:          config.TickLength,
