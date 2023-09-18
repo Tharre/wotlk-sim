@@ -44,8 +44,9 @@ func (warlock *Warlock) registerDrainSoulSpell() {
 		},
 		Cast: core.CastConfig{
 			DefaultCast: core.Cast{
-				GCD: core.GCDDefault,
-				// ChannelTime: channelTime,
+				GCD:            core.GCDDefault,
+				ChannelTime:    15 * time.Second,
+				AfterCastDelay: 150 * time.Millisecond,
 			},
 		},
 
@@ -82,6 +83,10 @@ func (warlock *Warlock) registerDrainSoulSpell() {
 				dot.UpdateExpires(dot.ExpiresAt())
 
 				warlock.everlastingAfflictionRefresh(sim, target)
+			} else if !spell.Dot(target).IsActive() {
+				// on recasting the same spell, miss continues channeling, trying to cast other
+				// (channeling) spells cancels
+				warlock.HardcastCancel(sim)
 			}
 		},
 		ExpectedDamage: func(sim *core.Simulation, target *core.Unit, spell *core.Spell, useSnapshot bool) *core.SpellResult {

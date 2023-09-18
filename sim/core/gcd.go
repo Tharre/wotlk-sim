@@ -123,6 +123,22 @@ func (unit *Unit) HardcastWaitUntil(sim *Simulation, readyTime time.Duration, on
 	unit.newHardcastAction(sim)
 }
 
+func (unit *Unit) HardcastCancel(sim *Simulation) {
+	unit.Hardcast.Expires = sim.CurrentTime
+	if unit.hardcastAction != nil {
+		unit.hardcastAction.Cancel(sim)
+		unit.hardcastAction = nil
+	}
+}
+
+func (unit *Unit) ContinueChanneling(sim *Simulation, spell *Spell) {
+	if spell.CurDot().NumTicksRemaining(sim) <= 0 {
+		panic("Tried to wait for next tick, but no channel dot active")
+	}
+
+	unit.WaitUntil(sim, sim.CurrentTime+spell.CurDot().TimeUntilNextTick(sim)+spell.CurCast.AfterCastDelay)
+}
+
 func (unit *Unit) WaitForMana(sim *Simulation, desiredMana float64) {
 	if !unit.IsWaitingForMana() {
 		unit.waitStartTime = sim.CurrentTime

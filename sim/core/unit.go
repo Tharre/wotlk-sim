@@ -132,7 +132,7 @@ type Unit struct {
 	doNothing bool // flags that this character chose to do nothing.
 
 	// Used for applying the effect of a hardcast spell when casting finishes.
-	//  For channeled spells, only Expires is set.
+	//  For channeled spells, OnComplete is not set.
 	// No more than one cast may be active at any given time.
 	Hardcast Hardcast
 

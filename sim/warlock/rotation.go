@@ -647,14 +647,16 @@ func (warlock *Warlock) OnGCDReady(sim *core.Simulation) {
 			if ac.Spell != warlock.DrainSoul {
 				panic("Trying to recast unknown spell")
 			}
-			warlock.DrainSoul.Dot(target).Cancel(sim)
+			// warlock.DrainSoul.CurDot().Cancel(sim)
+			warlock.HardcastCancel(sim)
 		}
 
 		if warlock.DrainSoul.CurDot().IsActive() {
 			if ac.Spell != warlock.DrainSoul && warlock.DrainSoul.CurDot().TickCount != 0 {
-				warlock.DrainSoul.CurDot().Cancel(sim)
+				// warlock.DrainSoul.CurDot().Cancel(sim)
+				warlock.HardcastCancel(sim)
 			} else {
-				warlock.WaitUntil(sim, sim.CurrentTime+warlock.DrainSoul.CurDot().TimeUntilNextTick(sim)+humanReactionTime)
+				warlock.ContinueChanneling(sim, warlock.DrainSoul)
 				return
 			}
 		}

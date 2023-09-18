@@ -14,9 +14,10 @@ type OnCastComplete func(aura *Aura, sim *Simulation, spell *Spell)
 
 type Hardcast struct {
 	Expires    time.Duration
-	ActionID   ActionID
+	Spell      *Spell
 	OnComplete func(*Simulation, *Unit)
 	Target     *Unit
+	Dot        *Dot
 }
 
 // Input for constructing the CastSpell function for a spell.
@@ -63,6 +64,16 @@ func (cast Cast) EffectiveTime() time.Duration {
 		gcd = MaxDuration(GCDMin, gcd)
 	}
 	fullCastTime := cast.CastTime + cast.ChannelTime + cast.AfterCastDelay
+	return MaxDuration(gcd, fullCastTime)
+}
+
+func (cast Cast) EffectiveTimeWithoutChannel() time.Duration {
+	gcd := cast.GCD
+	if cast.GCD != 0 {
+		// TODO: isn't this wrong for spells like shadowfury, that have a reduced GCD?
+		gcd = MaxDuration(GCDMin, gcd)
+	}
+	fullCastTime := cast.CastTime
 	return MaxDuration(gcd, fullCastTime)
 }
 
@@ -192,7 +203,8 @@ func (spell *Spell) wrapCastFuncGCD(_ CastConfig, onCastComplete CastFunc) CastF
 	if spell.DefaultCast.GCD == 0 { // mostly cooldowns (e.g. nature's swiftness, presence of mind)
 		return func(sim *Simulation, target *Unit) {
 			if hc := spell.Unit.Hardcast; hc.Expires > sim.CurrentTime {
-				panic(fmt.Sprintf("Trying to cast %s but casting/channeling %v for %s, curTime = %s", spell.ActionID, hc.ActionID, hc.Expires-sim.CurrentTime, sim.CurrentTime))
+				panic(fmt.Sprintf("Trying to cast %s but casting/channeling %v for %s, curTime = %s",
+					spell.ActionID, hc.Spell.ActionID, hc.Expires-sim.CurrentTime, sim.CurrentTime))
 			}
 			onCastComplete(sim, target)
 		}
@@ -201,14 +213,24 @@ func (spell *Spell) wrapCastFuncGCD(_ CastConfig, onCastComplete CastFunc) CastF
 	return func(sim *Simulation, target *Unit) {
 		// By panicking if spell is on CD, we force each sim to properly check for their own CDs.
 		if spell.CurCast.GCD != 0 && !spell.Unit.GCD.IsReady(sim) {
-			panic(fmt.Sprintf("Trying to cast %s but GCD on cooldown for %s, curTime = %s", spell.ActionID, spell.Unit.GCD.TimeToReady(sim), sim.CurrentTime))
+			panic(fmt.Sprintf("Trying to cast %s but GCD on cooldown for %s, curTime = %s",
+				spell.ActionID, spell.Unit.GCD.TimeToReady(sim), sim.CurrentTime))
 		}
 
-		if hc := spell.Unit.Hardcast; hc.Expires > sim.CurrentTime {
-			panic(fmt.Sprintf("Trying to cast %s but casting/channeling %v for %s, curTime = %s", spell.ActionID, hc.ActionID, hc.Expires-sim.CurrentTime, sim.CurrentTime))
+		hc := spell.Unit.Hardcast
+		if hc.Expires > sim.CurrentTime && hc.Spell != spell {
+			// if we're currently channeling something different, cancel the old aura
+			hc.Spell.Dot(hc.Target).Cancel(sim)
 		}
 
-		effectiveTime := spell.CurCast.EffectiveTime()
+		// if hc.Spell.CurCast.ChannelTime
+
+		if hc.Expires > sim.CurrentTime {
+			panic(fmt.Sprintf("Trying to cast %s but casting/channeling %v for %s, curTime = %s",
+				spell.ActionID, hc.Spell.ActionID, hc.Expires-sim.CurrentTime, sim.CurrentTime))
+		}
+
+		effectiveTime := spell.CurCast.EffectiveTimeWithoutChannel()
 		if effectiveTime != 0 {
 			spell.SpellMetrics[target.UnitIndex].TotalCastTime += effectiveTime
 			spell.Unit.SetGCDTimer(sim, sim.CurrentTime+effectiveTime)
@@ -283,7 +305,7 @@ func (spell *Spell) makeCastFuncWait(config CastConfig, onCastComplete CastFunc)
 
 	if spell.DefaultCast.ChannelTime > 0 {
 		return func(sim *Simulation, target *Unit) {
-			spell.Unit.Hardcast = Hardcast{Expires: sim.CurrentTime + spell.CurCast.ChannelTime, ActionID: spell.ActionID}
+			spell.Unit.Hardcast = Hardcast{Expires: sim.CurrentTime + spell.CurCast.ChannelTime, Spell: spell, Target: target}
 			if sim.Log != nil && !spell.Flags.Matches(SpellFlagNoLogs) {
 				spell.Unit.Log(sim, "Casting %s (Cost = %0.03f, Cast Time = %s, Effective Time = %s)",
 					spell.ActionID, MaxFloat(0, spell.CurCast.Cost), spell.CurCast.CastTime, spell.CurCast.EffectiveTime())
@@ -329,7 +351,7 @@ func (spell *Spell) makeCastFuncWait(config CastConfig, onCastComplete CastFunc)
 			} else {
 				spell.Unit.Hardcast = Hardcast{
 					Expires:    sim.CurrentTime + spell.CurCast.CastTime,
-					ActionID:   spell.ActionID,
+					Spell:      spell,
 					OnComplete: onCastComplete,
 					Target:     target,
 				}
